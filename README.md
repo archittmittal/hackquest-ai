@@ -49,7 +49,7 @@ India's 1.39M+ hackathon participants face a critical pain point: **scattered pr
 - Win probability gauges with judging rubric transparency
 - One-click code scaffold download and judge simulation preview
 
-## Architecture
+240
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -275,5 +275,92 @@ If you use HackQuest AI in research or publications:
 - Special thanks to the Indian hackathon developer community
 
 ---
+
+## Project Structure
+
+see `ARCHITECTURE.md` for detailed folder structure and module responsibilities.
+
+```
+hackquest-ai/
+├── backend/                        # FastAPI Agentic Core
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py                 # FastAPI entry + Middleware + WebSocket
+│   │   ├── api/                    # Route Handlers
+│   │   │   ├── auth.py             # GitHub OAuth / JWT Logic
+│   │   │   ├── matches.py          # GET /matches (Pinecone query)
+│   │   │   ├── generate.py         # POST /generate (Triggers LangGraph)
+│   │   │   └── websocket.py        # Real-time agent status updates
+│   │   ├── agents/                 # LangGraph Engine
+│   │   │   ├── __init__.py
+│   │   │   ├── state.py            # TypedDict State definition
+│   │   │   ├── graph.py            # Compiled StateGraph logic
+│   │   │   ├── nodes_data.py       # Node: GitHub/LinkedIn analysis
+│   │   │   ├── nodes_match.py      # Node: Pinecone ranking logic
+│   │   │   ├── nodes_judge.py      # Node: Rubric simulation logic
+│   │   │   └── nodes_gen.py        # Node: Boilerplate/Pitch deck gen
+│   │   ├── core/
+│   │   │   ├── config.py           # Pydantic Settings (ENV vars)
+│   │   │   └── database.py         # Mongo/Pinecone/Redis init
+│   │   ├── models/                 # Pydantic Schemas & Mongo Models
+│   │   │   ├── user.py
+│   │   │   ├── hackathon.py
+│   │   │   └── submission.py
+│   │   └── utils/
+│   │       ├── github_client.py    # Recursive repo parsing logic
+│   │       ├── vectorizer.py       # Sentence-Transformers / Ollama Embeds
+│   │       └── prompts.py          # System Prompts for Llama-3.1
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   ├── .dockerignore
+│   └── .env
+│
+├── frontend/                       # React 19 Client
+│   ├── public/
+│   ├── src/
+│   │   ├── assets/                 # SVGs, Lottie animations
+│   │   ├── components/
+│   │   │   ├── ui/                 # Reusable Tailwind components
+│   │   │   ├── dashboard/          # Win-Probability gauges
+│   │   │   ├── matches/            # Problem Statement cards
+│   │   │   └── editor/             # Code previewer for boilerplate
+│   │   ├── hooks/
+│   │   │   ├── useAuth.ts
+│   │   │   └── useAgentSocket.ts   # Listens to real-time gen status
+│   │   ├── pages/
+│   │   │   ├── Home.tsx
+│   │   │   ├── Login.tsx
+│   │   │   └── Dashboard.tsx
+│   │   ├── store/                  # Zustand/Redux for global state
+│   │   ├── App.tsx
+│   │   └── main.tsx
+│   ├── tailwind.config.js
+│   ├── tsconfig.json
+│   ├── package.json
+│   ├── Dockerfile
+│   └── .dockerignore
+│
+├── scrapers/                       # Ingestion Engine
+│   ├── common/
+│   │   ├── __init__.py
+│   │   └── base_spider.py          # Shared Playwright/Scrapy logic
+│   ├── spiders/
+│   │   ├── unstop_spider.py
+│   │   ├── devpost_spider.py
+│   │   └── sih_spider.py
+│   ├── scripts/
+│   │   └── ingest_to_pinecone.py   # One-time script to vectorize DB
+│   ├── scrapy.cfg
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── .dockerignore
+│
+├── docker/                         # Deployment
+│   ├── Dockerfile                  # Backend Dockerfile
+│   ├── docker-compose.yml          # Mongo + Redis + Ollama + App
+│   └── .dockerignore
+│
+└── .gitignore
+```
 
 **Made with ❤️ for competitive developers | HackQuest AI © 2025**
