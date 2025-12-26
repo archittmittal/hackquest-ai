@@ -1,1 +1,29 @@
- 
+ # --- Core Web Server ---
+fastapi[all]          # Includes uvicorn for serving and pydantic for validation
+uvicorn               # High-performance ASGI server
+python-multipart      # For handling file uploads (pitch decks)
+
+# --- Agentic Framework (The Brain) ---
+langgraph             # Stateful multi-agent orchestration
+langchain             # LLM utility tools
+langchain-openai      # For OpenAI/Azure (or compatible local proxies)
+langchain-community   # Community-built integrations
+
+# --- AI & Machine Learning ---
+sentence-transformers # For local vector embeddings (vectorizer.py)
+numpy                 # Math operations for similarity scores
+httpx                 # Async HTTP client for calling local Ollama API
+
+# --- Databases ---
+pinecone              # Vector Database for Hackathon PS matching
+motor                 # Async MongoDB driver for user data
+redis                 # For real-time match caching
+
+# --- Authentication & Security ---
+python-jose[cryptography] # JWT token generation
+passlib[bcrypt]           # Password hashing
+python-dotenv             # Environment variable management
+
+# --- Data Ingestion (Shared with Scraper) ---
+beautifulsoup4        # HTML parsing
+lxml                  # High-speed XML/HTML parser
