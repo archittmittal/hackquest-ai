@@ -1,23 +1,151 @@
-import motor.motor_asyncio
+"""MongoDB async database connection and management"""
+import logging
+from motor.motor_asyncio import AsyncClient, AsyncDatabase, AsyncCollection
+from pymongo.errors import ServerSelectionTimeoutError
+from contextlib import asynccontextmanager
 from pinecone import Pinecone
 from app.core.config import settings
 
-# --- MongoDB Setup ---
-client = motor.motor_asyncio.AsyncIOMotorClient(settings.MONGODB_URL)
-db = client[settings.DATABASE_NAME]
+logger = logging.getLogger(__name__)
 
-# --- Pinecone Setup ---
-# Initialize as None first so 'import' never fails
-pinecone_index = None 
+# Global database instances
+_db: AsyncDatabase | None = None
+_client: AsyncClient | None = None
+pinecone_index = None
 
-try:
-    # Ensure there are no spaces in your API key string
-    api_key = settings.PINECONE_API_KEY.strip()
-    pc = Pinecone(api_key=api_key)
+
+async def init_db() -> AsyncDatabase:
+    """Initialize MongoDB connection"""
+    global _db, _client
     
-    # Connect to the index
-    pinecone_index = pc.Index(settings.PINECONE_INDEX)
-    print(f"✅ Pinecone connected to index: {settings.PINECONE_INDEX}")
-except Exception as e:
-    print(f"❌ Pinecone Connection Error: {e}")
-    print("⚠️ Check your .env file for the correct PINECONE_API_KEY")
+    try:
+        _client = AsyncClient(
+            settings.mongodb_url,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=10000,
+            retryWrites=True,
+        )
+        
+        # Verify connection
+        await _client.admin.command('ping')
+        _db = _client[settings.mongodb_db]
+        
+        logger.info(f"✅ Connected to MongoDB: {settings.mongodb_db}")
+        await _create_indexes()
+        return _db
+        
+    except ServerSelectionTimeoutError as e:
+        logger.error(f"❌ Failed to connect to MongoDB: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"❌ Database initialization error: {e}")
+        raise
+
+
+async def close_db():
+    """Close MongoDB connection"""
+    global _client, _db
+    
+    if _client:
+        _client.close()
+        _db = None
+        logger.info("✅ MongoDB connection closed")
+
+
+def get_db() -> AsyncDatabase:
+    """Get database instance"""
+    if _db is None:
+        raise RuntimeError("Database not initialized. Call init_db() first.")
+    return _db
+
+
+@asynccontextmanager
+async def get_db_context():
+    """Context manager for database operations"""
+    db = get_db()
+    try:
+        yield db
+    except Exception as e:
+        logger.error(f"Database operation error: {e}")
+        raise
+
+
+async def init_pinecone():
+    """Initialize Pinecone vector database"""
+    global pinecone_index
+    
+    try:
+        api_key = settings.pinecone_api_key.strip()
+        pc = Pinecone(api_key=api_key)
+        pinecone_index = pc.Index(settings.pinecone_index)
+        logger.info(f"✅ Pinecone connected to index: {settings.pinecone_index}")
+        return pinecone_index
+    except Exception as e:
+        logger.error(f"❌ Pinecone connection error: {e}")
+        raise
+
+
+async def _create_indexes():
+    """Create database indexes for performance"""
+    db = get_db()
+    
+    try:
+        # Users collection indexes
+        users = db["users"]
+        await users.create_index("email", unique=True)
+        await users.create_index("username", unique=True)
+        await users.create_index("github_username", sparse=True)
+        
+        # Hackathons collection indexes
+        hackathons = db["hackathons"]
+        await hackathons.create_index("platform_id", unique=True)
+        await hackathons.create_index("platform")
+        await hackathons.create_index("difficulty")
+        await hackathons.create_index("required_skills")
+        
+        # Submissions collection indexes
+        submissions = db["submissions"]
+        await submissions.create_index("user_id")
+        await submissions.create_index("hackathon_id")
+        await submissions.create_index([("user_id", 1), ("hackathon_id", 1)], unique=True)
+        await submissions.create_index("status")
+        
+        # Matches collection indexes
+        matches = db["matches"]
+        await matches.create_index("user_id")
+        await matches.create_index("hackathon_id")
+        await matches.create_index([("user_id", 1), ("hackathon_id", 1)], unique=True)
+        
+        logger.info("✅ Database indexes created successfully")
+        
+    except Exception as e:
+        logger.warning(f"Index creation warning (may already exist): {e}")
+
+
+# Collection helpers
+class Collections:
+    """Easy access to database collections"""
+    
+    @staticmethod
+    def users() -> AsyncCollection:
+        return get_db()["users"]
+    
+    @staticmethod
+    def hackathons() -> AsyncCollection:
+        return get_db()["hackathons"]
+    
+    @staticmethod
+    def submissions() -> AsyncCollection:
+        return get_db()["submissions"]
+    
+    @staticmethod
+    def matches() -> AsyncCollection:
+        return get_db()["matches"]
+    
+    @staticmethod
+    def embeddings() -> AsyncCollection:
+        return get_db()["embeddings"]
+    
+    @staticmethod
+    def scrape_log() -> AsyncCollection:
+        return get_db()["scrape_log"]

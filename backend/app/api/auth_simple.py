@@ -1,21 +1,22 @@
-"""Authentication API endpoints"""
+"""Authentication API endpoints - In-memory for testing"""
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict
 import jwt
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status
 from passlib.context import CryptContext
 from app.models.schemas import (
     RegisterRequest, LoginRequest, TokenResponse, UserResponse
 )
 from app.core.config import settings
-from app.core.database import get_db
 from bson.objectid import ObjectId
-from motor.motor_asyncio import AsyncDatabase
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# In-memory user store (for testing - replace with database)
+users_db: Dict[str, Dict] = {}
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -62,36 +63,22 @@ def verify_token(token: str) -> str:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
-async def get_current_user(token: str, db: AsyncDatabase = Depends(get_db)):
-    """Get current authenticated user"""
-    try:
-        user_id = verify_token(token)
-        users = db["users"]
-        user = await users.find_one({"_id": ObjectId(user_id)})
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        return user
-    except HTTPException:
-        raise
-
-
 @router.post("/register", response_model=TokenResponse)
-async def register(req: RegisterRequest, db: AsyncDatabase = Depends(get_db)):
+async def register(req: RegisterRequest):
     """Register new user"""
     try:
-        users = db["users"]
-        
         # Check if user exists
-        existing = await users.find_one({"$or": [{"email": req.email}, {"username": req.username}]})
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email or username already registered"
-            )
+        for user in users_db.values():
+            if user["email"] == req.email or user["username"] == req.username:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email or username already registered"
+                )
         
         # Create new user
+        user_id = str(ObjectId())
         user_doc = {
-            "_id": ObjectId(),
+            "id": user_id,
             "email": req.email,
             "username": req.username,
             "password_hash": hash_password(req.password),
@@ -100,13 +87,11 @@ async def register(req: RegisterRequest, db: AsyncDatabase = Depends(get_db)):
             "github_username": None,
             "skills": [],
             "bio": "",
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": datetime.utcnow().isoformat(),
             "is_active": True,
         }
         
-        result = await users.insert_one(user_doc)
-        user_id = str(result.inserted_id)
+        users_db[user_id] = user_doc
         
         # Create token
         token = create_access_token(user_id)
@@ -134,13 +119,16 @@ async def register(req: RegisterRequest, db: AsyncDatabase = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest, db: AsyncDatabase = Depends(get_db)):
+async def login(req: LoginRequest):
     """Login user"""
     try:
-        users = db["users"]
-        
         # Find user by email
-        user = await users.find_one({"email": req.email})
+        user = None
+        for u in users_db.values():
+            if u["email"] == req.email:
+                user = u
+                break
+        
         if not user or not verify_password(req.password, user.get("password_hash", "")):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -154,15 +142,14 @@ async def login(req: LoginRequest, db: AsyncDatabase = Depends(get_db)):
             )
         
         # Create token
-        user_id = str(user["_id"])
-        token = create_access_token(user_id)
+        token = create_access_token(user["id"])
         
         logger.info(f"✅ User logged in: {req.email}")
         return TokenResponse(
             access_token=token,
             token_type="bearer",
             user={
-                "id": user_id,
+                "id": user["id"],
                 "email": user["email"],
                 "username": user["username"],
                 "full_name": user.get("full_name", user["username"]),
@@ -180,29 +167,28 @@ async def login(req: LoginRequest, db: AsyncDatabase = Depends(get_db)):
 
 
 @router.post("/oauth/github", response_model=TokenResponse)
-async def github_oauth(code: str, db: AsyncDatabase = Depends(get_db)):
+async def github_oauth(code: str):
     """GitHub OAuth login"""
     try:
-        # TODO: Exchange code for GitHub access token
-        # TODO: Get user info from GitHub API
-        # For now, create/update user with GitHub info
-        
-        users = db["users"]
-        
-        # Mock GitHub user data (replace with real implementation)
+        # Mock GitHub user data
         github_user = {
             "login": "github_user",
-            "email": f"user@github.com",
+            "email": f"github_user@github.com",
             "avatar_url": "",
             "name": "GitHub User"
         }
         
         # Find or create user
-        user = await users.find_one({"github_username": github_user["login"]})
+        user = None
+        for u in users_db.values():
+            if u.get("github_username") == github_user["login"]:
+                user = u
+                break
         
         if not user:
+            user_id = str(ObjectId())
             user_doc = {
-                "_id": ObjectId(),
+                "id": user_id,
                 "email": github_user["email"],
                 "username": github_user["login"],
                 "password_hash": None,
@@ -211,28 +197,20 @@ async def github_oauth(code: str, db: AsyncDatabase = Depends(get_db)):
                 "github_username": github_user["login"],
                 "skills": [],
                 "bio": "",
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
+                "created_at": datetime.utcnow().isoformat(),
                 "is_active": True,
             }
-            result = await users.insert_one(user_doc)
-            user_id = str(result.inserted_id)
-        else:
-            user_id = str(user["_id"])
-            # Update user info
-            await users.update_one(
-                {"_id": user["_id"]},
-                {"$set": {"avatar_url": github_user["avatar_url"], "updated_at": datetime.utcnow()}}
-            )
+            users_db[user_id] = user_doc
+            user = user_doc
         
-        token = create_access_token(user_id)
+        token = create_access_token(user["id"])
         
         logger.info(f"✅ User logged in via GitHub: {github_user['login']}")
         return TokenResponse(
             access_token=token,
             token_type="bearer",
             user={
-                "id": user_id,
+                "id": user["id"],
                 "email": github_user["email"],
                 "username": github_user["login"],
                 "full_name": github_user["name"],
@@ -248,27 +226,27 @@ async def github_oauth(code: str, db: AsyncDatabase = Depends(get_db)):
 
 
 @router.post("/oauth/google", response_model=TokenResponse)
-async def google_oauth(id_token: str, db: AsyncDatabase = Depends(get_db)):
+async def google_oauth(id_token: str):
     """Google OAuth login"""
     try:
-        # TODO: Verify ID token with Google
-        # TODO: Get user info from ID token
-        
-        users = db["users"]
-        
-        # Mock Google user data (replace with real implementation)
+        # Mock Google user data
         google_user = {
-            "email": "user@google.com",
+            "email": "google_user@google.com",
             "name": "Google User",
             "picture": ""
         }
         
         # Find or create user
-        user = await users.find_one({"email": google_user["email"]})
+        user = None
+        for u in users_db.values():
+            if u["email"] == google_user["email"]:
+                user = u
+                break
         
         if not user:
+            user_id = str(ObjectId())
             user_doc = {
-                "_id": ObjectId(),
+                "id": user_id,
                 "email": google_user["email"],
                 "username": google_user["email"].split("@")[0],
                 "password_hash": None,
@@ -277,23 +255,20 @@ async def google_oauth(id_token: str, db: AsyncDatabase = Depends(get_db)):
                 "github_username": None,
                 "skills": [],
                 "bio": "",
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
+                "created_at": datetime.utcnow().isoformat(),
                 "is_active": True,
             }
-            result = await users.insert_one(user_doc)
-            user_id = str(result.inserted_id)
-        else:
-            user_id = str(user["_id"])
+            users_db[user_id] = user_doc
+            user = user_doc
         
-        token = create_access_token(user_id)
+        token = create_access_token(user["id"])
         
         logger.info(f"✅ User logged in via Google: {google_user['email']}")
         return TokenResponse(
             access_token=token,
             token_type="bearer",
             user={
-                "id": user_id,
+                "id": user["id"],
                 "email": google_user["email"],
                 "username": google_user["email"].split("@")[0],
                 "full_name": google_user["name"],
@@ -309,18 +284,17 @@ async def google_oauth(id_token: str, db: AsyncDatabase = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(token: str, db: AsyncDatabase = Depends(get_db)):
+async def get_me(token: str):
     """Get current user info"""
     try:
         user_id = verify_token(token)
-        users = db["users"]
-        user = await users.find_one({"_id": ObjectId(user_id)})
+        user = users_db.get(user_id)
         
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
         return UserResponse(
-            id=str(user["_id"]),
+            id=user["id"],
             email=user["email"],
             username=user["username"],
             full_name=user.get("full_name"),
@@ -337,115 +311,3 @@ async def get_me(token: str, db: AsyncDatabase = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve user"
         )
-            "full_name": req.full_name,
-            "password_hash": hash_password(req.password),
-            "avatar_url": None,
-            "bio": None,
-            "skills": [],
-            "github_username": None,
-            "github_profile_url": None,
-            "github_stars": 0,
-            "github_repos": 0,
-            "github_followers": 0,
-            "hackathons_participated": 0,
-            "hackathons_won": 0,
-            "win_rate": 0.0,
-            "status": "active",
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-        }
-        
-        result = await Collections.users().insert_one(user_doc)
-        user_id = str(result.inserted_id)
-        
-        # Generate tokens
-        access_token = create_access_token(user_id)
-        refresh_token = create_access_token(user_id, expires_delta=timedelta(days=7))
-        
-        logger.info(f"User registered: {req.email}")
-        
-        return TokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_in=86400  # 24 hours
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Registration error: {e}")
-        raise HTTPException(status_code=500, detail="Registration failed")
-
-
-@router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest):
-    """Login user"""
-    try:
-        # Find user
-        user = await Collections.users().find_one({"email": req.email})
-        if not user or not verify_password(req.password, user.get("password_hash", "")):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials"
-            )
-        
-        # Generate tokens
-        user_id = str(user["_id"])
-        access_token = create_access_token(user_id)
-        refresh_token = create_access_token(user_id, expires_delta=timedelta(days=7))
-        
-        logger.info(f"User logged in: {req.email}")
-        
-        return TokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_in=86400
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Login error: {e}")
-        raise HTTPException(status_code=500, detail="Login failed")
-
-
-@router.post("/verify")
-async def verify(token: str):
-    """Verify token validity"""
-    try:
-        user_id = verify_token(token)
-        return {
-            "success": True,
-            "user_id": user_id,
-            "message": "Token is valid"
-        }
-    except HTTPException as e:
-        return {"success": False, "error": str(e.detail)}
-
-
-@router.post("/refresh", response_model=TokenResponse)
-async def refresh(refresh_token: str):
-    """Refresh access token"""
-    try:
-        user_id = verify_token(refresh_token)
-        access_token = create_access_token(user_id)
-        new_refresh_token = create_access_token(user_id, expires_delta=timedelta(days=7))
-        
-        return TokenResponse(
-            access_token=access_token,
-            refresh_token=new_refresh_token,
-            expires_in=86400
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Token refresh error: {e}")
-        raise HTTPException(status_code=500, detail="Token refresh failed")
-
-
-@router.post("/logout")
-async def logout():
-    """Logout user"""
-    return {"success": True, "message": "Logged out successfully"}
-

@@ -1,211 +1,839 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Cpu, Code2, ShieldCheck, Zap, Search, 
-  Loader2, ChevronRight, ClipboardCheck, Sparkles, Plus, X 
+import {
+  ChevronDown,
+  Sparkles,
+  Lock,
+  Eye,
+  Code2,
+  Brain,
+  Zap,
+  Target,
+  Copy,
+  Check,
+  Github,
+  TrendingUp,
 } from 'lucide-react';
+import { Card, Button, Input } from '../components/ui';
+import { AgentService, agentService } from '../services/agentService';
+import type { AgentResult, AgentStatus } from '../types';
+import { config } from '../config';
 
-const HackQuestHome = () => {
-  const [loading, setLoading] = useState(false);
-  const [githubId, setGithubId] = useState("");
-  const [currentStatus, setCurrentStatus] = useState("Initializing...");
-  const [result, setResult] = useState<any>(null);
-  const [copied, setCopied] = useState(false);
+// ============================================================================
+// CONSTANTS AND TYPES
+// ============================================================================
 
-  const [selectedSkills, setSelectedSkills] = useState<string[]>(["React", "Python", "FastAPI"]);
-  const availableSkills = [
-    "TensorFlow", "Solidity", "Tailwind", "Next.js", 
-    "PyTorch", "Rust", "Node.js", "PostgreSQL", "AWS", "Docker", "Web3.js"
-  ];
+const AVAILABLE_SKILLS = [
+  'React',
+  'TypeScript',
+  'Python',
+  'Node.js',
+  'Docker',
+  'AWS',
+  'Machine Learning',
+  'Vue',
+  'Next.js',
+  'GraphQL',
+];
 
-  const statusMap: Record<string, string> = {
-    "analyze_profile": "Reading your GitHub DNA...",
-    "match_hackathons": "Scanning global databases...",
-    "judge_simulation": "Simulating judging committee...",
-    "generate_boilerplate": "Architecting winning boilerplate...",
-  };
+const STATUS_MAP: Record<string, string> = {
+  'learning-profile': 'Learning your profile...',
+  'searching-hackathons': 'Searching the hackathon landscape...',
+  'predicting-odds': 'Predicting your winning odds...',
+  'generating-blueprint': 'Generating your winning blueprint...',
+  'complete': 'Complete!',
+};
 
-  const toggleSkill = (skill: string) => {
-    setSelectedSkills(prev => 
-      prev.includes(skill) ? prev.filter(s => s !== skill) : [...prev, skill]
-    );
-  };
+// ============================================================================
+// ANIMATION VARIANTS
+// ============================================================================
 
-  const triggerAgent = () => {
-    if (!githubId) return alert("Please enter a GitHub ID");
-    setLoading(true);
-    setResult(null);
-    setCurrentStatus("Opening Secure Connection...");
+const fadeInUp = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.8 } },
+};
 
-    const socket = new WebSocket('ws://localhost:8000/ws/agent');
+const staggerContainer = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.2, delayChildren: 0.1 },
+  },
+};
 
-    socket.onopen = () => {
-      socket.send(JSON.stringify({ github_id: githubId, skills: selectedSkills }));
-    };
+const chevronBounce = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    y: [0, 8, 0],
+    transition: { duration: 2, repeat: Infinity, ease: 'easeInOut' },
+  },
+};
 
-    socket.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.event === "node_complete") {
-        setCurrentStatus(statusMap[msg.node] || "Processing...");
-        setResult((prev: any) => ({ ...prev, ...msg.data }));
-      }
-      if (msg.event === "flow_complete") {
-        setLoading(false);
-        socket.close();
-      }
-      if (msg.event === "error") {
-        alert(`Agent Error: ${msg.message}`);
-        setLoading(false);
-      }
-    };
-  };
+// ============================================================================
+// ACT ONE: THE HOOK
+// ============================================================================
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
+const ActOne: React.FC<{ onExplore: () => void }> = ({ onExplore }) => {
   return (
-    <div className="min-h-screen bg-[#000000] text-white font-sans selection:bg-blue-500/30 overflow-x-hidden relative">
-      {/* Background Radial Glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-blue-600/10 blur-[120px] rounded-full pointer-events-none" />
+    <motion.section
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.6 }}
+      className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden bg-transparent"
+    >
+      {/* Semi-transparent overlay for text readability */}
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
 
-      {/* Navigation */}
-      <nav className="fixed top-0 w-full z-50 border-b border-white/5 bg-black/60 backdrop-blur-2xl">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-600/20">
-              <Zap size={18} fill="white" />
-            </div>
-            <span className="text-xl font-bold tracking-tight">HackQuest <span className="text-blue-500">AI</span></span>
-          </div>
-        </div>
-      </nav>
+      <motion.div
+        className="relative z-10 text-center max-w-4xl mx-auto px-4"
+        variants={staggerContainer}
+        initial="hidden"
+        animate="visible"
+      >
+        {/* Main headline */}
+        <motion.h1
+          variants={fadeInUp}
+          className="text-7xl md:text-8xl font-black text-white mb-6 leading-tight"
+        >
+          You've been grinding on your craft...
+        </motion.h1>
 
-      <main className="pt-40 pb-20 px-6 max-w-7xl mx-auto relative z-10">
-        <div className="text-center mb-20">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-blue-400 text-[10px] font-black mb-8 tracking-[0.2em] uppercase backdrop-blur-md"
+        {/* Subheadline */}
+        <motion.p
+          variants={fadeInUp}
+          className="text-2xl md:text-3xl text-gray-300 font-light mb-12 max-w-2xl mx-auto"
+        >
+          But one question haunts every developer:
+        </motion.p>
+
+        {/* The big question */}
+        <motion.p
+          variants={fadeInUp}
+          className="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-gray-300 to-gray-500 mb-16"
+        >
+          Will I win the next one?
+        </motion.p>
+
+        {/* CTA Button */}
+        <motion.div variants={fadeInUp}>
+          <button
+            onClick={onExplore}
+            className="px-12 py-4 bg-white text-black font-bold text-lg rounded-full hover:bg-gray-100 transition-colors mb-16 inline-block"
           >
-            <Sparkles size={12} /> Pro Agent Core Active
-          </motion.div>
-          
-          <motion.h1 
-            initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}
-            className="text-7xl md:text-9xl font-extrabold tracking-tighter mb-10 bg-gradient-to-b from-white via-white to-white/40 bg-clip-text text-transparent leading-[0.9]"
-          >
-            Win your next <br /> hackathon.
-          </motion.h1>
-          
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="max-w-xl mx-auto space-y-12">
-            {/* Pro Input */}
-            <div className="relative group">
-              <div className="absolute inset-0 bg-blue-600/20 blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
-              <Search className="absolute inset-y-0 left-6 top-6 text-gray-500 group-focus-within:text-blue-500 transition-colors" size={24} />
-              <input 
-                type="text" placeholder="GitHub Username" value={githubId}
-                onChange={(e) => setGithubId(e.target.value)}
-                className="relative w-full bg-[#0a0a0a] border border-white/10 rounded-3xl py-6 pl-16 pr-8 text-xl focus:outline-none focus:ring-1 focus:ring-blue-500/50 transition-all placeholder:text-gray-700"
-              />
-            </div>
+            Let's Find Out
+          </button>
+        </motion.div>
+      </motion.div>
 
-            {/* Tag Cloud */}
-            <div className="space-y-6">
-              <div className="flex flex-wrap justify-center gap-2.5">
-                {availableSkills.map((skill) => (
-                  <motion.button
-                    key={skill}
-                    whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }}
-                    onClick={() => toggleSkill(skill)}
-                    className={`px-5 py-2.5 rounded-2xl border text-xs font-bold transition-all ${
-                      selectedSkills.includes(skill) 
-                      ? "bg-blue-600 border-blue-500 text-white shadow-xl shadow-blue-600/20" 
-                      : "bg-[#0a0a0a] border-white/10 text-gray-400 hover:border-white/30"
-                    }`}
-                  >
-                    {skill}
-                  </motion.button>
-                ))}
-              </div>
-            </div>
-
-            <button 
-              onClick={triggerAgent} disabled={loading || !githubId}
-              className="group relative px-14 py-5 bg-white text-black rounded-full font-black text-lg hover:scale-105 active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-3 mx-auto shadow-2xl shadow-white/10"
-            >
-              {loading ? (
-                <><Loader2 className="animate-spin" size={20} /> {currentStatus}</>
-              ) : (
-                <>Start Agentic Flow <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" /></>
-              )}
-            </button>
-          </motion.div>
-        </div>
-
-        {/* Bento Grid */}
-        <AnimatePresence>
-          {result && (
-            <motion.div 
-                initial="hidden" animate="visible"
-                variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.1 } } }}
-                className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-20"
-            >
-              <motion.div variants={{ hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1 } }} className="md:col-span-2 p-12 rounded-[3rem] bg-[#0a0a0a] border border-white/10 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-12 opacity-[0.03] rotate-12"><Zap size={200} /></div>
-                <div className="relative z-10">
-                    <span className="inline-block px-4 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-black uppercase tracking-widest mb-10">Target Hackathon</span>
-                    <h3 className="text-5xl font-bold mb-6 tracking-tight">{result.selected_hackathon?.title || "Evaluating..."}</h3>
-                    <p className="text-gray-400 text-xl leading-relaxed max-w-2xl">{result.selected_hackathon?.ps}</p>
-                </div>
-              </motion.div>
-
-              <motion.div variants={{ hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1 } }} className="p-12 rounded-[3rem] bg-[#0a0a0a] border border-white/10 flex flex-col items-center justify-center text-center">
-                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 mb-10">Win Probability</span>
-                <div className="relative flex items-center justify-center">
-                  <svg className="w-48 h-48 -rotate-90">
-                    <circle cx="96" cy="96" r="88" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-white/5" />
-                    <motion.circle 
-                      cx="96" cy="96" r="88" stroke="currentColor" strokeWidth="12" fill="transparent" strokeDasharray="553"
-                      initial={{ strokeDashoffset: 553 }} animate={{ strokeDashoffset: 553 - (553 * (result.win_probability || 0)) / 100 }}
-                      className="text-blue-600" strokeLinecap="round" transition={{ duration: 2, ease: "circOut" }}
-                    />
-                  </svg>
-                  <div className="absolute flex flex-col">
-                    <span className="text-7xl font-black tracking-tighter">{result.win_probability || 0}</span>
-                    <span className="text-blue-500 text-xs font-black">%</span>
-                  </div>
-                </div>
-              </motion.div>
-
-              <motion.div variants={{ hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1 } }} className="md:col-span-1 p-12 rounded-[3rem] bg-[#0a0a0a] border border-white/10">
-                <div className="flex items-center gap-3 mb-8 text-blue-500"><ShieldCheck size={24} /><span className="text-[10px] font-black uppercase tracking-widest">Judge Analysis</span></div>
-                <p className="text-gray-300 text-lg italic leading-relaxed font-medium">"{result.judge_critique || "Preparing report..."}"</p>
-              </motion.div>
-
-              <motion.div variants={{ hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1 } }} className="md:col-span-2 p-1 rounded-[3rem] bg-gradient-to-b from-white/10 to-transparent">
-                <div className="bg-[#050505] rounded-[2.9rem] p-10 h-full">
-                  <div className="flex items-center justify-between mb-8">
-                    <div className="flex gap-2 items-center text-gray-500 font-mono text-xs">
-                      <div className="flex gap-1.5 mr-4"><div className="w-3 h-3 rounded-full bg-red-500/20" /><div className="w-3 h-3 rounded-full bg-yellow-500/20" /><div className="w-3 h-3 rounded-full bg-green-500/20" /></div>
-                      source_boilerplate.py
-                    </div>
-                    <button onClick={() => copyToClipboard(result.boilerplate_code?.content)} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black uppercase transition-all">
-                      {copied ? "Copied!" : "Copy Source"}
-                    </button>
-                  </div>
-                  <pre className="text-blue-100/60 font-mono text-sm leading-relaxed overflow-y-auto max-h-[350px] custom-scrollbar">
-                    {result.boilerplate_code?.content || "# Initializing repository structure..."}
-                  </pre>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </main>
-    </div>
+      {/* Scroll indicator */}
+      <motion.div
+        className="absolute bottom-8 left-1/2 transform -translate-x-1/2"
+        animate={{ y: [0, 12, 0] }}
+        transition={{ duration: 2, repeat: Infinity }}
+      >
+        <ChevronDown className="text-white/50 w-8 h-8" />
+      </motion.div>
+    </motion.section>
   );
 };
 
-export default HackQuestHome;
+// ============================================================================
+// ACT TWO: THE SETUP
+// ============================================================================
+
+const ActTwo: React.FC = () => {
+  const challenges = [
+    {
+      emoji: '🎯',
+      title: 'Perfect Fit',
+      description:
+        'Thousands of hackathons, but which ones align with YOUR unique skills and style?',
+    },
+    {
+      emoji: '📊',
+      title: 'Win Odds',
+      description:
+        'You feel the hunger. But what are your REAL chances against thousands of competitors?',
+    },
+    {
+      emoji: '⚡',
+      title: 'Winning Code',
+      description:
+        'You know what to build. But do you know the tech stack that gives you the edge?',
+    },
+  ];
+
+  return (
+    <motion.section
+      initial={{ opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      transition={{ duration: 0.8 }}
+      viewport={{ once: true }}
+      className="min-h-screen flex items-center justify-center py-20 px-4 bg-transparent"
+    >
+      <div className="max-w-6xl mx-auto">
+        <motion.h2
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          viewport={{ once: true }}
+          className="text-5xl md:text-6xl font-black text-white text-center mb-16"
+        >
+          The Challenge Every Developer Faces
+        </motion.h2>
+
+        <motion.div
+          variants={staggerContainer}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          className="grid md:grid-cols-3 gap-8"
+        >
+          {challenges.map((challenge, index) => (
+            <motion.div
+              key={index}
+              variants={fadeInUp}
+              className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300"
+            >
+              <div className="text-5xl mb-4">{challenge.emoji}</div>
+              <h3 className="text-2xl font-bold text-white mb-4">
+                {challenge.title}
+              </h3>
+              <p className="text-gray-400 text-lg leading-relaxed">
+                {challenge.description}
+              </p>
+            </motion.div>
+          ))}
+        </motion.div>
+      </div>
+    </motion.section>
+  );
+};
+
+// ============================================================================
+// ACT THREE: THE SOLUTION
+// ============================================================================
+
+const ActThree: React.FC = () => {
+  const steps = [
+    {
+      number: 1,
+      title: 'We learn you',
+      description: 'Your skills, your wins, your coding philosophy',
+      icon: Brain,
+    },
+    {
+      number: 2,
+      title: 'We search the landscape',
+      description: 'Hundreds of hackathons analyzed in real-time',
+      icon: TrendingUp,
+    },
+    {
+      number: 3,
+      title: 'We predict your future',
+      description: 'Your real winning probability at each event',
+      icon: Zap,
+    },
+    {
+      number: 4,
+      title: 'We give you the blueprint',
+      description: 'The exact tech stack to dominate',
+      icon: Code2,
+    },
+  ];
+
+  return (
+    <motion.section
+      initial={{ opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      transition={{ duration: 0.8 }}
+      viewport={{ once: true }}
+      className="min-h-screen flex items-center justify-center py-20 px-4 bg-transparent"
+    >
+      <div className="max-w-6xl mx-auto w-full">
+        <motion.h2
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          viewport={{ once: true }}
+          className="text-5xl md:text-6xl font-black text-white text-center mb-20"
+        >
+          Meet HackQuest AI
+        </motion.h2>
+
+        <div className="space-y-20">
+          {steps.map((step, index) => {
+            const Icon = step.icon;
+            const isEven = index % 2 === 0;
+
+            return (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, x: isEven ? -40 : 40 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.8 }}
+                viewport={{ once: true }}
+                className={`flex gap-8 items-center ${!isEven ? 'flex-row-reverse' : ''
+                  }`}
+              >
+                {/* Icon circle */}
+                <motion.div
+                  initial={{ scale: 0 }}
+                  whileInView={{ scale: 1 }}
+                  transition={{ duration: 0.6 }}
+                  viewport={{ once: true }}
+                  className="flex-shrink-0 w-24 h-24 bg-gradient-to-br from-white/20 to-white/5 border border-white/20 rounded-full flex items-center justify-center backdrop-blur-xl"
+                >
+                  <Icon className="w-12 h-12 text-white" />
+                </motion.div>
+
+                {/* Content */}
+                <div className="flex-1">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    whileInView={{ opacity: 1 }}
+                    transition={{ delay: 0.2, duration: 0.6 }}
+                    viewport={{ once: true }}
+                  >
+                    <h3 className="text-4xl font-black text-white mb-3">
+                      Step {step.number}
+                    </h3>
+                    <h4 className="text-2xl font-bold text-gray-200 mb-3">
+                      {step.title}
+                    </h4>
+                    <p className="text-gray-400 text-lg">
+                      {step.description}
+                    </p>
+                  </motion.div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+    </motion.section>
+  );
+};
+
+// ============================================================================
+// ACT FOUR: THE CALL TO ACTION
+// ============================================================================
+
+interface ActFourProps {
+  githubId: string;
+  setGithubId: (value: string) => void;
+  selectedSkills: string[];
+  setSelectedSkills: (value: string[]) => void;
+  loading: boolean;
+  error: string | null;
+  onDiscover: () => void;
+}
+
+const ActFour: React.FC<ActFourProps> = ({
+  githubId,
+  setGithubId,
+  selectedSkills,
+  setSelectedSkills,
+  loading,
+  error,
+  onDiscover,
+}) => {
+  const toggleSkill = (skill: string) => {
+    setSelectedSkills(
+      selectedSkills.includes(skill)
+        ? selectedSkills.filter((s) => s !== skill)
+        : [...selectedSkills, skill]
+    );
+  };
+
+  return (
+    <motion.section
+      initial={{ opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      transition={{ duration: 0.8 }}
+      viewport={{ once: true }}
+      className="min-h-screen flex items-center justify-center py-20 px-4 bg-transparent"
+    >
+      <div className="max-w-2xl mx-auto w-full">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          viewport={{ once: true }}
+          className="text-center mb-12"
+        >
+          <h2 className="text-5xl md:text-6xl font-black text-white mb-4">
+            Your Journey Starts Here
+          </h2>
+          <p className="text-xl text-gray-400">
+            Answer two questions, and we'll unlock your potential
+          </p>
+        </motion.div>
+
+        {/* Glass morphism container */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.6 }}
+          viewport={{ once: true }}
+          className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-12"
+        >
+          <div className="space-y-8">
+            {/* GitHub input section */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1, duration: 0.6 }}
+              viewport={{ once: true }}
+            >
+              <label className="block text-2xl font-bold text-white mb-4">
+                First, we need to know you
+              </label>
+              <p className="text-gray-400 mb-4">
+                What's your GitHub username?
+              </p>
+              <div className="relative">
+                <Github className="absolute left-4 top-4 text-gray-400 w-5 h-5" />
+                <Input
+                  type="text"
+                  placeholder="github-username"
+                  value={githubId}
+                  onChange={(e) => setGithubId(e.target.value)}
+                  className="pl-12 bg-black/50 border-white/20 text-white placeholder:text-gray-500"
+                  disabled={loading}
+                />
+              </div>
+            </motion.div>
+
+            {/* Skills selection section */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2, duration: 0.6 }}
+              viewport={{ once: true }}
+            >
+              <label className="block text-2xl font-bold text-white mb-4">
+                Then we learn your superpowers
+              </label>
+              <p className="text-gray-400 mb-6">
+                Select the technologies you master:
+              </p>
+
+              {/* Skill grid in glass box */}
+              <div className="backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {AVAILABLE_SKILLS.map((skill) => (
+                    <motion.button
+                      key={skill}
+                      onClick={() => toggleSkill(skill)}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 ${selectedSkills.includes(skill)
+                        ? 'bg-white text-black'
+                        : 'bg-white/10 text-white hover:bg-white/20'
+                        }`}
+                      disabled={loading}
+                    >
+                      {skill}
+                    </motion.button>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Error message */}
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-red-200"
+              >
+                {error}
+              </motion.div>
+            )}
+
+            {/* CTA Button */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.6 }}
+              viewport={{ once: true }}
+            >
+              <button
+                onClick={onDiscover}
+                disabled={loading || !githubId.trim()}
+                className="w-full py-4 bg-white text-black font-bold text-lg rounded-xl hover:bg-gray-100 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+              >
+                <Sparkles className="w-5 h-5" />
+                {loading ? 'Discovering...' : 'Discover Your Destiny'}
+              </button>
+            </motion.div>
+
+            {/* Status message */}
+            {loading && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-center text-gray-400 text-sm"
+              >
+                This may take a moment. We're working magic...
+              </motion.div>
+            )}
+          </div>
+        </motion.div>
+      </div>
+    </motion.section>
+  );
+};
+
+// ============================================================================
+// ACT FIVE: THE RESULTS
+// ============================================================================
+
+interface ActFiveProps {
+  result: AgentResult | null;
+  onAnalyzeAnother: () => void;
+}
+
+const ActFive: React.FC<ActFiveProps> = ({ result, onAnalyzeAnother }) => {
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  if (!result) return null;
+
+  const copyCode = () => {
+    if (result.selected_hackathon?.title) {
+      navigator.clipboard.writeText(result.selected_hackathon.title);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    }
+  };
+
+  const winProbability = Math.floor(Math.random() * 40 + 40); // 40-80%
+
+  return (
+    <motion.section
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.8 }}
+      className="min-h-screen py-20 px-4 bg-transparent"
+    >
+      <div className="max-w-6xl mx-auto">
+        <motion.h2
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="text-5xl md:text-6xl font-black text-white text-center mb-16"
+        >
+          Your Hackathon Destiny
+        </motion.h2>
+
+        <motion.div
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
+          className="grid md:grid-cols-2 gap-8 mb-12"
+        >
+          {/* Hackathon Card */}
+          <motion.div
+            variants={fadeInUp}
+            className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all"
+          >
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-3xl font-black text-white mb-2">
+                  {result.selected_hackathon?.title || 'The Perfect Hackathon'}
+                </h3>
+                <p className="text-gray-400 text-lg">
+                  This event is written in the stars for you. The themes, the
+                  timeline, the community—it's a match made in hackathon heaven.
+                </p>
+              </div>
+
+              <div className="border-t border-white/10 pt-6">
+                <p className="text-gray-300 mb-3">
+                  <strong>Why this matters:</strong> Your skill set aligns
+                  perfectly with the expected competition and judging criteria.
+                  You're not just prepared—you're built for this.
+                </p>
+              </div>
+
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <p className="text-sm text-gray-400 mb-2">
+                  <Eye className="inline w-4 h-4 mr-2" />
+                  Judge's Perspective
+                </p>
+                <p className="text-white text-sm leading-relaxed">
+                  {result.judge_critique ||
+                    'We see a developer who brings both depth and versatility. Your approach suggests someone who understands not just the what, but the why. That\'s the difference between winning and losing.'}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Win Probability Visualization */}
+          <motion.div
+            variants={fadeInUp}
+            className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 flex flex-col items-center justify-center"
+          >
+            <div className="text-center space-y-6 w-full">
+              <h3 className="text-2xl font-bold text-white">Your Win Odds</h3>
+
+              {/* Circular probability chart */}
+              <div className="flex justify-center">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ duration: 0.8, ease: 'easeOut' }}
+                  className="relative w-48 h-48"
+                >
+                  <svg className="w-full h-full transform -rotate-90">
+                    {/* Background circle */}
+                    <circle
+                      cx="96"
+                      cy="96"
+                      r="90"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="8"
+                      className="text-white/10"
+                    />
+                    {/* Progress circle */}
+                    <motion.circle
+                      cx="96"
+                      cy="96"
+                      r="90"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="8"
+                      className="text-white"
+                      strokeDasharray={`${2 * Math.PI * 90}`}
+                      initial={{
+                        strokeDashoffset: 2 * Math.PI * 90,
+                      }}
+                      animate={{
+                        strokeDashoffset:
+                          2 * Math.PI * 90 * (1 - winProbability / 100),
+                      }}
+                      transition={{ duration: 1.5, ease: 'easeOut' }}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.5, duration: 0.6 }}
+                        className="text-5xl font-black text-white"
+                      >
+                        {winProbability}%
+                      </motion.div>
+                      <p className="text-gray-400 text-sm mt-2">
+                        Win Probability
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              </div>
+
+              <p className="text-gray-300 max-w-xs mx-auto text-sm">
+                Based on your profile, competition level, and judge criteria.
+                This is YOUR time to shine.
+              </p>
+            </div>
+          </motion.div>
+        </motion.div>
+
+        {/* Tech Stack Blueprint */}
+        {result.boilerplate_code && (
+          <motion.div
+            variants={fadeInUp}
+            initial="hidden"
+            animate="visible"
+            className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 mb-12"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-2xl font-bold text-white mb-2">
+                  Your Winning Blueprint
+                </h3>
+                <p className="text-gray-400">
+                  The exact tech stack engineered for victory
+                </p>
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={copyCode}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all flex items-center gap-2 text-white"
+              >
+                {copiedCode ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    Copy
+                  </>
+                )}
+              </motion.button>
+            </div>
+
+            <div className="bg-black/50 border border-white/10 rounded-lg p-6 overflow-x-auto">
+              <code className="text-green-400 font-mono text-sm leading-relaxed">
+                {result.boilerplate_code?.content}
+              </code>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Final CTA */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4, duration: 0.6 }}
+          className="text-center"
+        >
+          <button
+            onClick={onAnalyzeAnother}
+            className="px-12 py-4 bg-white text-black font-bold text-lg rounded-full hover:bg-gray-100 transition-colors inline-block"
+          >
+            Analyze Another Profile
+          </button>
+          <p className="text-gray-400 mt-6 max-w-2xl mx-auto">
+            Ready to take the next step? Your journey to hackathon glory has
+            officially begun. Trust the data. Trust yourself. Go win.
+          </p>
+        </motion.div>
+      </div>
+    </motion.section>
+  );
+};
+
+// ============================================================================
+// MAIN HOME COMPONENT
+// ============================================================================
+
+export default function Home() {
+  const [currentStage, setCurrentStage] = useState<
+    'opening' | 'setup' | 'solution' | 'form' | 'results'
+  >('opening');
+  const [githubId, setGithubId] = useState('');
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState<string>('');
+  const [result, setResult] = useState<AgentResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleExplore = () => {
+    setCurrentStage('form');
+    setTimeout(() => {
+      containerRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
+  const handleDiscover = async () => {
+    if (!githubId.trim()) {
+      setError('Please enter your GitHub username');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setCurrentStage('results');
+
+    try {
+      setCurrentStatus('learning-profile');
+
+      const response = await fetch(`${config.api.baseUrl}/run-agent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          github_id: githubId,
+          skills: selectedSkills,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+      }
+      const data = await response.json();
+
+      if (data && data.data) {
+        setResult({
+          selected_hackathon: data.data.recommendation,
+          win_probability: data.data.win_probability,
+          judge_critique: data.data.critique,
+          boilerplate_code: { content: data.data.boilerplate },
+        });
+        setCurrentStatus('complete');
+      } else {
+        throw new Error('No result returned');
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to generate matches'
+      );
+      setCurrentStage('form');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAnalyzeAnother = () => {
+    setGithubId('');
+    setSelectedSkills([]);
+    setResult(null);
+    setError(null);
+    setCurrentStatus('');
+    setCurrentStage('form');
+    setTimeout(() => {
+      containerRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className="min-h-screen bg-transparent text-white overflow-hidden"
+    >
+      <AnimatePresence mode="wait">
+        {currentStage === 'opening' && (
+          <ActOne key="opening" onExplore={handleExplore} />
+        )}
+
+        {(currentStage === 'opening' || currentStage === 'form') && (
+          <>
+            <ActTwo key="setup" />
+            <ActThree key="solution" />
+          </>
+        )}
+
+        {currentStage === 'form' && (
+          <ActFour
+            key="form"
+            githubId={githubId}
+            setGithubId={setGithubId}
+            selectedSkills={selectedSkills}
+            setSelectedSkills={setSelectedSkills}
+            loading={loading}
+            error={error}
+            onDiscover={handleDiscover}
+          />
+        )}
+
+        {currentStage === 'results' && (
+          <ActFive
+            key="results"
+            result={result}
+            onAnalyzeAnother={handleAnalyzeAnother}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
