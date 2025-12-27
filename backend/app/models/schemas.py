@@ -144,9 +144,11 @@ class UserProfile(BaseModel):
 
 class UpdateProfileRequest(BaseModel):
     """Update user profile"""
+    username: Optional[str] = None
     full_name: Optional[str] = None
     bio: Optional[str] = None
-    skills: Optional[List[SkillEnum]] = None
+    avatar_url: Optional[str] = None
+    skills: Optional[List[str]] = None
     github_username: Optional[str] = None
 
 
@@ -174,6 +176,23 @@ class HackathonBase(BaseModel):
     is_remote: bool = True
     registration_link: str
     platform_id: str
+
+
+class HackathonCreateRequest(BaseModel):
+    """Create hackathon request"""
+    title: str
+    description: str
+    platform: str
+    prize_pool: int = 0
+    difficulty: str
+    required_skills: List[str] = []
+    location: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    theme: Optional[str] = None
+    is_remote: Optional[bool] = None
+    registration_link: Optional[str] = None
+    platform_id: Optional[str] = None
 
 
 class HackathonMatch(BaseModel):
@@ -355,6 +374,88 @@ class AgentResponse(BaseModel):
     data: Dict[str, Any]
     error: Optional[str] = None
     execution_time: float
+
+
+# ==================== MATCHING SCHEMAS ====================
+
+class HackathonResponse(BaseModel):
+    """Hackathon response"""
+    id: str
+    title: str
+    description: Optional[str] = None
+    platform: str
+    url: Optional[str] = None
+    difficulty: str
+    required_skills: List[str] = []
+    prize_pool: Optional[str] = None
+    location: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    is_active: bool = True
+
+
+class MatchScore(BaseModel):
+    """Match score details"""
+    overall_score: float
+    skill_match: float
+    difficulty_match: float
+    reasoning: Optional[str] = None
+
+
+class HackathonMatchResponse(BaseModel):
+    """Hackathon match response"""
+    hackathon: HackathonResponse
+    match_score: MatchScore
+    is_applied: bool = False
+
+
+class PasswordResetRequest(BaseModel):
+    """Password reset request"""
+    email: str
+
+
+class PasswordResetConfirm(BaseModel):
+    """Password reset confirmation"""
+    token: str
+    new_password: str = Field(..., min_length=8)
+
+
+# ==================== CODE GENERATION SCHEMAS ====================
+
+class CodeGenerationRequest(BaseModel):
+    """Code generation request"""
+    prompt: str
+    language: str = "python"
+    framework: Optional[str] = None
+    requirements: Optional[List[str]] = None
+
+
+class CodeGenerationResponse(BaseModel):
+    """Code generation response"""
+    code: str
+    language: str
+    explanation: Optional[str] = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ==================== SEARCH SCHEMAS ====================
+
+class SearchRequest(BaseModel):
+    """Search request"""
+    query: str
+    difficulty: Optional[str] = None
+    min_prize: Optional[int] = None
+    filters: Optional[Dict[str, Any]] = None
+    limit: int = 20
+    offset: int = 0
+
+
+class SearchResponse(BaseModel):
+    """Search response"""
+    results: List[Dict[str, Any]]
+    total: int
+    limit: int
+    offset: int
 
 
 # ==================== ERROR SCHEMAS ====================
