@@ -474,3 +474,34 @@ class ValidationError(BaseModel):
     error: str = "Validation Error"
     fields: Dict[str, List[str]]
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+# ==================== AGENT WORKFLOW SCHEMAS ====================
+
+class AgentQueryRequest(BaseModel):
+    """Request for agent analysis and matching"""
+    user_id: str
+    skills: Optional[List[str]] = []
+    github_summary: Optional[str] = None
+    experience_level: Optional[str] = "intermediate"
+
+
+class HackathonInfo(BaseModel):
+    """Hackathon information"""
+    id: str
+    title: str
+    ps: str  # Problem Statement
+    score: Optional[float] = None
+    difficulty: Optional[str] = None
+    platform: Optional[str] = None
+    prize_pool: Optional[int] = None
+
+
+class AgentResponse(BaseModel):
+    """Agent workflow response"""
+    status: str
+    user_id: str
+    selected_hackathon: Optional[HackathonInfo] = None
+    win_probability: float = 0.0
+    judge_critique: Optional[str] = None
+    boilerplate_code: Optional[Dict[str, str]] = None
+    timestamp: Optional[str] = None

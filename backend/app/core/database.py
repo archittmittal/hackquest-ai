@@ -1,6 +1,6 @@
 """MongoDB async database connection and management"""
 import logging
-from motor.motor_asyncio import AsyncClient, AsyncDatabase, AsyncCollection
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorCollection
 from pymongo.errors import ServerSelectionTimeoutError
 from contextlib import asynccontextmanager
 from pinecone import Pinecone
@@ -9,17 +9,17 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 # Global database instances
-_db: AsyncDatabase | None = None
-_client: AsyncClient | None = None
+_db: AsyncIOMotorDatabase | None = None
+_client: AsyncIOMotorClient | None = None
 pinecone_index = None
 
 
-async def init_db() -> AsyncDatabase:
+async def init_db() -> AsyncIOMotorDatabase:
     """Initialize MongoDB connection"""
     global _db, _client
     
     try:
-        _client = AsyncClient(
+        _client = AsyncIOMotorClient(
             settings.mongodb_url,
             serverSelectionTimeoutMS=5000,
             connectTimeoutMS=10000,
@@ -52,7 +52,7 @@ async def close_db():
         logger.info("✅ MongoDB connection closed")
 
 
-def get_db() -> AsyncDatabase:
+def get_db() -> AsyncIOMotorDatabase:
     """Get database instance"""
     if _db is None:
         raise RuntimeError("Database not initialized. Call init_db() first.")
@@ -127,25 +127,25 @@ class Collections:
     """Easy access to database collections"""
     
     @staticmethod
-    def users() -> AsyncCollection:
+    def users() -> AsyncIOMotorCollection:
         return get_db()["users"]
     
     @staticmethod
-    def hackathons() -> AsyncCollection:
+    def hackathons() -> AsyncIOMotorCollection:
         return get_db()["hackathons"]
     
     @staticmethod
-    def submissions() -> AsyncCollection:
+    def submissions() -> AsyncIOMotorCollection:
         return get_db()["submissions"]
     
     @staticmethod
-    def matches() -> AsyncCollection:
+    def matches() -> AsyncIOMotorCollection:
         return get_db()["matches"]
     
     @staticmethod
-    def embeddings() -> AsyncCollection:
+    def embeddings() -> AsyncIOMotorCollection:
         return get_db()["embeddings"]
     
     @staticmethod
-    def scrape_log() -> AsyncCollection:
+    def scrape_log() -> AsyncIOMotorCollection:
         return get_db()["scrape_log"]

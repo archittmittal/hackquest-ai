@@ -115,14 +115,3 @@ async def broadcast_agent_update(user_id: str, update: dict):
             f"agent:{user_id}:matches",
             json.dumps(update)
         )
-
-                    "data": node_output
-                })
-
-        # 3. Send final completion signal
-        await websocket.send_json({"event": "flow_complete"})
-
-    except WebSocketDisconnect:
-        print(f"Client disconnected")
-    except Exception as e:
-        await websocket.send_json({"event": "error", "message": str(e)})

@@ -2,9 +2,10 @@ import { LoginBackground } from '../components/LoginBackground';
 import { Logo3D } from '../components/Logo3D';
 import { useState } from 'react';
 import { Github, Chrome } from 'lucide-react';
+import { apiClient } from '../services/api';
 
 interface LoginProps {
-    onLoginSuccess?: (user: { email: string; username: string }) => void;
+    onLoginSuccess?: (user: { email: string; username: string; id?: string }) => void;
 }
 
 export default function Login({ onLoginSuccess }: LoginProps) {
@@ -16,7 +17,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Validate inputs
         if (!email || !password) {
             setError('Please fill in all fields');
             return;
@@ -26,30 +26,16 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         setIsLoading(true);
 
         try {
-            // Call backend login endpoint
-            const response = await fetch('http://127.0.0.1:8000/api/auth/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ email, password }),
-            });
+            const result = await apiClient.login(email, password);
 
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.detail || 'Login failed');
-            }
+            localStorage.setItem('user', JSON.stringify(result.user));
 
-            const data = await response.json();
-
-            // Store token in localStorage
-            localStorage.setItem('access_token', data.access_token);
-            localStorage.setItem('user', JSON.stringify(data.user));
-
-            // Call the success callback
             if (onLoginSuccess) {
-                console.log('Login successful:', data.user);
-                onLoginSuccess({ email: data.user.email, username: data.user.username });
+                onLoginSuccess({
+                    email: result.user.email,
+                    username: result.user.username,
+                    id: result.user.id
+                });
             }
         } catch (err) {
             console.error('Login error:', err);
@@ -61,36 +47,27 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     const handleGitHubLogin = async () => {
         try {
             setIsLoading(true);
-            console.log('GitHub login initiated');
+            setError('');
 
-            // Call backend GitHub OAuth endpoint
-            const response = await fetch('http://127.0.0.1:8000/api/auth/oauth/github', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email: `github_${Date.now()}@github.com`,
-                    username: 'github_user',
-                    full_name: 'GitHub User',
-                    avatar_url: 'https://avatars.githubusercontent.com/u/123456'
-                }),
-            });
+            // In production, this would redirect to GitHub OAuth
+            // For demo, we'll use a simulated GitHub login
+            const result = await apiClient.login(
+                `github_${Date.now()}@github.com`,
+                'password123'
+            );
 
-            if (!response.ok) {
-                throw new Error('GitHub login failed');
-            }
-
-            const data = await response.json();
-            localStorage.setItem('access_token', data.access_token);
-            localStorage.setItem('user', JSON.stringify(data.user));
+            localStorage.setItem('user', JSON.stringify(result.user));
 
             if (onLoginSuccess) {
-                onLoginSuccess({ email: data.user.email, username: data.user.username });
+                onLoginSuccess({
+                    email: result.user.email,
+                    username: result.user.username,
+                    id: result.user.id
+                });
             }
         } catch (err) {
             console.error('GitHub login error:', err);
-            setError('GitHub login failed');
+            setError('GitHub login not yet configured. Use email login for now.');
             setIsLoading(false);
         }
     };
@@ -98,36 +75,27 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     const handleGoogleLogin = async () => {
         try {
             setIsLoading(true);
-            console.log('Google login initiated');
+            setError('');
 
-            // Call backend Google OAuth endpoint
-            const response = await fetch('http://127.0.0.1:8000/api/auth/oauth/google', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email: `google_${Date.now()}@google.com`,
-                    username: 'google_user',
-                    full_name: 'Google User',
-                    avatar_url: 'https://lh3.googleusercontent.com/a/default-user'
-                }),
-            });
+            // In production, this would redirect to Google OAuth
+            // For demo, we'll use a simulated Google login
+            const result = await apiClient.login(
+                `google_${Date.now()}@google.com`,
+                'password123'
+            );
 
-            if (!response.ok) {
-                throw new Error('Google login failed');
-            }
-
-            const data = await response.json();
-            localStorage.setItem('access_token', data.access_token);
-            localStorage.setItem('user', JSON.stringify(data.user));
+            localStorage.setItem('user', JSON.stringify(result.user));
 
             if (onLoginSuccess) {
-                onLoginSuccess({ email: data.user.email, username: data.user.username });
+                onLoginSuccess({
+                    email: result.user.email,
+                    username: result.user.username,
+                    id: result.user.id
+                });
             }
         } catch (err) {
             console.error('Google login error:', err);
-            setError('Google login failed');
+            setError('Google login not yet configured. Use email login for now.');
             setIsLoading(false);
         }
     };
@@ -155,7 +123,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                         {/* Header */}
                         <div className="text-center mb-8">
                             <h1 className="text-3xl font-black text-white mb-1">HackQuest AI</h1>
-                            <p className="text-sm text-gray-400">Find your perfect hackathon team</p>
+                            <p className="text-sm text-gray-400">Find your perfect hackathon match</p>
                         </div>
 
                         {/* Form */}
@@ -167,7 +135,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                                 </label>
                                 <input
                                     id="email"
-                                    type="text"
+                                    type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     placeholder="name@example.com"
@@ -238,10 +206,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
                         {/* Footer */}
                         <div className="mt-8 text-center text-sm text-gray-400">
-                            Don't have an account?{' '}
-                            <a href="#signup" className="text-cyan-400 hover:text-cyan-300 font-semibold transition-colors">
-                                Sign up
-                            </a>
+                            Demo credentials: test@example.com / password123
                         </div>
                     </div>
                 </div>

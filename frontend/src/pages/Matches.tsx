@@ -1,29 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Card, Button } from '../components/ui';
-import { config } from '../config';
 import { Trophy, Users, Calendar, Link as LinkIcon } from 'lucide-react';
+import { apiClient, HackathonMatch } from '../services/api';
 
-interface HackathonMatch {
-    id: string;
-    title: string;
-    description: string;
-    platform: string;
-    difficulty: string;
-    skills_match: number;
-    win_probability: number;
-    prize_pool: number;
-    matched_skills: string[];
-    missing_skills: string[];
-    start_date: string;
-    end_date: string;
-    registration_link: string;
-    theme: string;
-}
-
-export const Matches: React.FC = () => {
+const Matches: React.FC = () => {
     const [matches, setMatches] = useState<HackathonMatch[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
     const [selectedMatch, setSelectedMatch] = useState<HackathonMatch | null>(null);
     const [filters, setFilters] = useState({
         difficulty: 'all',
@@ -36,18 +20,17 @@ export const Matches: React.FC = () => {
 
     const fetchMatches = async () => {
         setLoading(true);
+        setError('');
         try {
-            const query = new URLSearchParams();
-            if (filters.difficulty !== 'all') query.append('difficulty', filters.difficulty);
-            if (filters.platform !== 'all') query.append('platform', filters.platform);
+            const filterObj: Record<string, string> = {};
+            if (filters.difficulty !== 'all') filterObj.difficulty = filters.difficulty;
+            if (filters.platform !== 'all') filterObj.platform = filters.platform;
 
-            const response = await fetch(
-                `${config.api.baseUrl}/api/matches/hackathons?${query.toString()}`
-            );
-            const data = await response.json();
-            setMatches(data.data || []);
-        } catch (error) {
-            console.error('Failed to fetch matches:', error);
+            const response = await apiClient.findMatches(filterObj);
+            setMatches(response.data || []);
+        } catch (err) {
+            console.error('Failed to fetch matches:', err);
+            setError(err instanceof Error ? err.message : 'Failed to fetch matches');
         } finally {
             setLoading(false);
         }
@@ -99,7 +82,6 @@ export const Matches: React.FC = () => {
                             <option value="expert">Expert</option>
                         </select>
                     </div>
-
                     <div>
                         <label className="block text-sm font-semibold mb-2">Platform</label>
                         <select
@@ -112,125 +94,149 @@ export const Matches: React.FC = () => {
                             <option value="unstop">Unstop</option>
                             <option value="hackerearth">HackerEarth</option>
                             <option value="devfolio">DevFolio</option>
-                            <option value="sih">Smart India Hackathon</option>
                         </select>
                     </div>
                 </motion.div>
 
-                {/* Matches Grid */}
-                {loading ? (
-                    <div className="text-center py-20">
-                        <div className="inline-block animate-spin">
-                            <Trophy className="w-8 h-8 text-blue-400" />
-                        </div>
-                        <p className="text-gray-400 mt-4">Loading hackathons...</p>
-                    </div>
-                ) : matches.length === 0 ? (
-                    <Card className="bg-white/[0.02] backdrop-blur-xl border border-white/[0.08] p-12 text-center rounded-2xl">
-                        <p className="text-gray-400 text-lg">No hackathons found matching your filters</p>
-                    </Card>
-                ) : (
-                    <div className="grid grid-cols-1 gap-6">
-                        {matches.map((match, idx) => (
-                            <motion.div
-                                key={match.id}
-                                variants={fadeInUp}
-                                whileHover={{ scale: 1.01 }}
-                                className="bg-white/[0.02] backdrop-blur-xl border border-white/[0.08] rounded-2xl p-6 cursor-pointer transition-all"
-                                onClick={() => setSelectedMatch(match)}
-                            >
-                                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                                    {/* Info */}
-                                    <div className="lg:col-span-2">
-                                        <div className="flex items-start gap-3 mb-4">
-                                            <div>
-                                                <p className="text-blue-400 text-sm font-semibold uppercase">{match.platform}</p>
-                                                <h3 className="text-2xl font-bold mt-1">{match.title}</h3>
-                                            </div>
-                                        </div>
-
-                                        <p className="text-gray-400 text-sm mb-4 line-clamp-2">{match.description}</p>
-
-                                        <div className="flex flex-wrap gap-2 mb-4">
-                                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getDifficultyColor(match.difficulty)}`}>
-                                                {match.difficulty}
-                                            </span>
-                                            <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-semibold">
-                                                {match.theme}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Metrics */}
-                                    <div className="lg:col-span-2 grid grid-cols-2 gap-3">
-                                        <div className="bg-white/5 rounded-lg p-4">
-                                            <p className="text-gray-400 text-xs mb-2">Skill Match</p>
-                                            <p className="text-2xl font-bold text-green-400">{(match.skills_match * 100).toFixed(0)}%</p>
-                                        </div>
-                                        <div className="bg-white/5 rounded-lg p-4">
-                                            <p className="text-gray-400 text-xs mb-2">Win Probability</p>
-                                            <p className="text-2xl font-bold text-blue-400">{(match.win_probability * 100).toFixed(0)}%</p>
-                                        </div>
-                                        <div className="bg-white/5 rounded-lg p-4">
-                                            <p className="text-gray-400 text-xs mb-2">Prize Pool</p>
-                                            <p className="text-2xl font-bold text-yellow-400">
-                                                ${(match.prize_pool / 1000).toFixed(0)}K
-                                            </p>
-                                        </div>
-                                        <div className="bg-white/5 rounded-lg p-4">
-                                            <p className="text-gray-400 text-xs mb-2">Timeline</p>
-                                            <p className="text-sm font-semibold">
-                                                {new Date(match.end_date).toLocaleDateString()}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Details (if selected) */}
-                                {selectedMatch?.id === match.id && (
-                                    <motion.div
-                                        initial={{ opacity: 0, height: 0 }}
-                                        animate={{ opacity: 1, height: 'auto' }}
-                                        className="mt-6 pt-6 border-t border-white/10"
-                                    >
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <div>
-                                                <h4 className="font-semibold mb-3">Matched Skills</h4>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {match.matched_skills.map((skill) => (
-                                                        <span key={skill} className="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-xs">
-                                                            ✓ {skill}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <h4 className="font-semibold mb-3">Skills to Learn</h4>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {match.missing_skills.slice(0, 4).map((skill) => (
-                                                        <span key={skill} className="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-xs">
-                                                            ○ {skill}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="mt-6 flex gap-3">
-                                            <Button className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg">
-                                                <LinkIcon className="w-4 h-4 mr-2 inline" />
-                                                Register
-                                            </Button>
-                                            <Button className="flex-1 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">
-                                                Generate Code
-                                            </Button>
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </motion.div>
-                        ))}
-                    </div>
+                {/* Error Message */}
+                {error && (
+                    <motion.div variants={fadeInUp} className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400">
+                        {error}
+                    </motion.div>
                 )}
+
+                {/* Matches List */}
+                <motion.div variants={fadeInUp}>
+                    {loading ? (
+                        <div className="text-center py-12">
+                            <div className="inline-block animate-spin">
+                                <Trophy className="w-8 h-8 text-blue-400" />
+                            </div>
+                            <p className="text-gray-400 mt-4">Loading matches...</p>
+                        </div>
+                    ) : matches.length === 0 ? (
+                        <Card className="bg-white/[0.02] backdrop-blur-xl border border-white/[0.08] p-12 text-center rounded-2xl">
+                            <p className="text-gray-400 text-lg">No hackathons found matching your filters</p>
+                        </Card>
+                    ) : (
+                        <div className="space-y-4">
+                            {matches.map((match) => (
+                                <motion.div
+                                    key={match.id}
+                                    variants={fadeInUp}
+                                    whileHover={{ scale: 1.01 }}
+                                    className="bg-white/[0.02] backdrop-blur-xl border border-white/[0.08] rounded-2xl p-6 cursor-pointer transition-all"
+                                    onClick={() => setSelectedMatch(selectedMatch?.id === match.id ? null : match)}
+                                >
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                        {/* Title & Platform */}
+                                        <div className="md:col-span-2">
+                                            <p className="text-blue-400 text-sm font-semibold mb-1">{match.platform?.toUpperCase() || 'PLATFORM'}</p>
+                                            <h3 className="text-xl font-bold mb-2">{match.title}</h3>
+                                            <p className="text-gray-400 text-sm">{match.description?.substring(0, 100) || 'No description'}...</p>
+                                        </div>
+
+                                        {/* Metrics */}
+                                        <div className="space-y-3">
+                                            <div className="bg-white/5 rounded-lg p-3">
+                                                <p className="text-gray-400 text-xs mb-1">Skill Match</p>
+                                                <p className="text-lg font-bold text-green-400">{((match.skills_match || 0) * 100).toFixed(0)}%</p>
+                                            </div>
+                                            <div className="bg-white/5 rounded-lg p-3">
+                                                <p className="text-gray-400 text-xs mb-1">Win Probability</p>
+                                                <p className="text-lg font-bold text-blue-400">{((match.win_probability || 0) * 100).toFixed(0)}%</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Tags & Actions */}
+                                        <div className="space-y-3">
+                                            <div className="flex flex-wrap gap-2">
+                                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getDifficultyColor(match.difficulty || 'intermediate')}`}>
+                                                    {match.difficulty || 'intermediate'}
+                                                </span>
+                                                <span className="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-xs font-semibold">
+                                                    ${((match.prize_pool || 0) / 1000).toFixed(1)}K
+                                                </span>
+                                            </div>
+
+                                            <Button className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-semibold">
+                                                View Details
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {/* Bottom Info */}
+                                    <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-400">
+                                        <div className="flex items-center gap-2">
+                                            <Calendar className="w-4 h-4" />
+                                            <span>{match.end_date ? new Date(match.end_date).toLocaleDateString() : 'TBA'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Users className="w-4 h-4" />
+                                            <span>{(match.matched_skills || []).length} matched skills</span>
+                                        </div>
+                                        {match.registration_link && (
+                                            <a
+                                                href={match.registration_link}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="flex items-center gap-2 text-blue-400 hover:text-blue-300"
+                                            >
+                                                <LinkIcon className="w-4 h-4" />
+                                                <span>Register</span>
+                                            </a>
+                                        )}
+                                    </div>
+
+                                    {/* Expanded Details */}
+                                    {selectedMatch?.id === match.id && (
+                                        <motion.div
+                                            initial={{ opacity: 0, height: 0 }}
+                                            animate={{ opacity: 1, height: 'auto' }}
+                                            className="mt-6 pt-6 border-t border-white/10"
+                                        >
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                                <div>
+                                                    <h4 className="font-semibold mb-3">Matched Skills</h4>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {(match.matched_skills || []).map((skill) => (
+                                                            <span key={skill} className="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-xs">
+                                                                ✓ {skill}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-semibold mb-3">Skills to Learn</h4>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {(match.missing_skills || []).slice(0, 5).map((skill) => (
+                                                            <span key={skill} className="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-xs">
+                                                                ○ {skill}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex gap-3">
+                                                <Button className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg">
+                                                    Generate Code
+                                                </Button>
+                                                <Button
+                                                    onClick={() => match.registration_link && window.open(match.registration_link, '_blank')}
+                                                    className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg"
+                                                >
+                                                    Register Now
+                                                </Button>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </motion.div>
+                            ))}
+                        </div>
+                    )}
+                </motion.div>
             </motion.div>
         </div>
     );

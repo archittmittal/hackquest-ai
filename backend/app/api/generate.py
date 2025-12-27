@@ -1,11 +1,20 @@
-"""Code generation API endpoint."""
+"""Code generation API endpoint with agent integration."""
+import logging
+import json
 from fastapi import APIRouter, HTTPException, status
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from app.models.schemas import CodeGenerationRequest, CodeGenerationResponse
+from app.agents import app_agent, AgentState
+from app.core.config import settings
+from groq import Groq
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/generate", tags=["generation"])
+
+# Initialize Groq client for code generation
+groq_client = Groq(api_key=settings.GROQ_API_KEY)
 
 
 def generate_code_with_llm(prompt: str, language: str = "python", framework: Optional[str] = None) -> str:
@@ -42,6 +51,28 @@ from django.views.decorators.http import require_http_methods
 def api_endpoint(request):
     # Implementation: {prompt}
     return JsonResponse({{"status": "success"}})""",
+            "fastapi": f"""# Generated FastAPI application
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class RequestData(BaseModel):
+    # Define your request schema here
+    data: str
+
+@app.post("/api/endpoint")
+async def endpoint(request: RequestData):
+    # Implementation: {prompt}
+    return {{"status": "success", "data": request.data}}
+
+@app.get("/health")
+async def health():
+    return {{"status": "healthy"}}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)"""
         },
         "javascript": {
             None: f"""// Generated JavaScript code
@@ -108,6 +139,57 @@ main();""",
 # Code generation not yet implemented for this combination"""
 
 
+async def generate_boilerplate_with_groq(problem_statement: str, skills: list) -> Dict[str, str]:
+    """Generate boilerplate code using Groq API."""
+    try:
+        prompt = f"""Generate a complete FastAPI + React boilerplate starter code for this hackathon problem.
+        
+Problem Statement: {problem_statement}
+
+Available Skills: {', '.join(skills)}
+
+Provide the following files:
+1. FastAPI backend main.py with basic endpoints
+2. React TypeScript component
+3. Docker Compose configuration
+4. Requirements.txt
+5. Package.json
+
+Format the output as JSON with keys: backend, frontend, docker_compose, requirements, package_json"""
+        
+        response = groq_client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert full-stack developer. Generate clean, production-ready boilerplate code."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            model="llama-3.3-70b-versatile",
+            temperature=0.3,
+            max_tokens=4096,
+            response_format={"type": "json_object"}
+        )
+        
+        content = response.choices[0].message.content
+        boilerplate = json.loads(content)
+        
+        return boilerplate
+    
+    except Exception as e:
+        logger.error(f"Error generating boilerplate with Groq: {e}")
+        return {
+            "backend": "# Error generating code",
+            "frontend": "// Error generating code",
+            "docker_compose": "# Error generating code",
+            "requirements": "# Error generating code",
+            "package_json": "{}"
+        }
+
+
 @router.post("/code", response_model=CodeGenerationResponse)
 async def generate_code(request: CodeGenerationRequest):
     """Generate code from natural language prompt."""
@@ -142,9 +224,62 @@ This is a template implementation. For production use, integrate with:
         )
     
     except Exception as e:
+        logger.error(f"Code generation error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Code generation failed: {str(e)}"
+        )
+
+
+@router.post("/boilerplate")
+async def generate_boilerplate(
+    user_id: str,
+    problem_statement: str,
+    skills: Optional[list] = None
+):
+    """Generate complete boilerplate for a hackathon."""
+    try:
+        if not user_id or not problem_statement:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="user_id and problem_statement are required"
+            )
+        
+        logger.info(f"Generating boilerplate for user {user_id}")
+        
+        boilerplate = await generate_boilerplate_with_groq(problem_statement, skills or [])
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "boilerplate": boilerplate,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    
+    except Exception as e:
+        logger.error(f"Boilerplate generation error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Boilerplate generation failed: {str(e)}"
+        )
+
+
+@router.post("/download/{submission_id}")
+async def download_boilerplate(submission_id: str):
+    """Download generated boilerplate as ZIP."""
+    try:
+        # Placeholder for ZIP generation
+        return {
+            "success": True,
+            "download_url": f"/api/generate/files/{submission_id}.zip",
+            "message": "Download link generated"
+        }
+    
+    except Exception as e:
+        logger.error(f"Download error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Download failed: {str(e)}"
         )
 
 
@@ -157,29 +292,37 @@ async def explain_code(code: str):
             detail="Code cannot be empty"
         )
     
-    explanation = """Code explanation (placeholder - integrate with LLM):
-
-This code snippet performs various operations. For detailed analysis:
-- Use OpenAI GPT-4 with code understanding
-- Use Claude with code analysis capabilities
-- Use specialized code analysis tools
-
-Features identified:
-- Multiple functions/methods
-- Potential dependencies
-- Code structure and flow
-
-Recommendations:
-- Add type hints
-- Improve error handling
-- Add documentation
-"""
+    try:
+        response = groq_client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert code reviewer. Provide clear explanations of code functionality."
+                },
+                {
+                    "role": "user",
+                    "content": f"Explain this code in detail:\n\n{code}"
+                }
+            ],
+            model="llama-3.3-70b-versatile",
+            temperature=0.5,
+            max_tokens=2048
+        )
+        
+        explanation = response.choices[0].message.content
+        
+        return {
+            "success": True,
+            "explanation": explanation,
+            "timestamp": datetime.utcnow().isoformat()
+        }
     
-    return {
-        "success": True,
-        "explanation": explanation,
-        "timestamp": datetime.utcnow()
-    }
+    except Exception as e:
+        logger.error(f"Code explanation error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Explanation failed: {str(e)}"
+        )
 
 
 @router.post("/code/optimize")
@@ -191,27 +334,34 @@ async def optimize_code(code: str):
             detail="Code cannot be empty"
         )
     
-    optimizations = """Optimization suggestions (placeholder - integrate with LLM):
-
-Performance improvements:
-1. Use caching for frequently accessed data
-2. Optimize loops and reduce time complexity
-3. Use appropriate data structures
-
-Code quality:
-1. Remove redundant code
-2. Improve readability
-3. Add error handling
-4. Follow best practices
-
-Refactoring suggestions:
-1. Extract functions for reusability
-2. Improve separation of concerns
-3. Add unit tests
-"""
+    try:
+        response = groq_client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert performance optimization specialist. Provide actionable optimization suggestions."
+                },
+                {
+                    "role": "user",
+                    "content": f"Optimize this code for performance and readability:\n\n{code}"
+                }
+            ],
+            model="llama-3.3-70b-versatile",
+            temperature=0.3,
+            max_tokens=2048
+        )
+        
+        optimizations = response.choices[0].message.content
+        
+        return {
+            "success": True,
+            "optimizations": optimizations,
+            "timestamp": datetime.utcnow().isoformat()
+        }
     
-    return {
-        "success": True,
-        "optimizations": optimizations,
-        "timestamp": datetime.utcnow()
-    }
+    except Exception as e:
+        logger.error(f"Code optimization error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Optimization failed: {str(e)}"
+        )

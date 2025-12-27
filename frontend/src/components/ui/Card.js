@@ -1,0 +1,13 @@
+import { jsx as _jsx } from "react/jsx-runtime";
+import React from "react";
+import { cn } from "@/lib/utils";
+export const Card = React.forwardRef(({ className, children, ...props }, ref) => (_jsx("div", { ref: ref, className: cn("rounded-lg border border-white/10 bg-[#0a0a0a]/50 backdrop-blur-sm p-6 shadow-lg transition-all hover:shadow-xl hover:border-white/20 dark:bg-slate-950/50", className), ...props, children: children })));
+Card.displayName = "Card";
+export const CardHeader = React.forwardRef(({ className, children, ...props }, ref) => (_jsx("div", { ref: ref, className: cn("flex flex-col space-y-1.5 pb-6", className), ...props, children: children })));
+CardHeader.displayName = "CardHeader";
+export const CardTitle = React.forwardRef(({ className, children, ...props }, ref) => (_jsx("h3", { ref: ref, className: cn("text-2xl font-bold tracking-tight text-white", className), ...props, children: children })));
+CardTitle.displayName = "CardTitle";
+export const CardDescription = React.forwardRef(({ className, children, ...props }, ref) => (_jsx("p", { ref: ref, className: cn("text-sm text-gray-400 leading-relaxed", className), ...props, children: children })));
+CardDescription.displayName = "CardDescription";
+export const CardContent = React.forwardRef(({ className, children, ...props }, ref) => (_jsx("div", { ref: ref, className: cn("pt-0", className), ...props, children: children })));
+CardContent.displayName = "CardContent";

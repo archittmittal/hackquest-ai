@@ -2,28 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, Target, Zap, Clock, Trophy } from 'lucide-react';
 import { Card, Button } from '../components/ui';
-import { config } from '../config';
+import { apiClient, HackathonMatch } from '../services/api';
 
-interface Match {
-    id: string;
-    title: string;
-    platform: string;
-    skills_match: number;
-    win_probability: number;
-    prize?: number;
-    difficulty: string;
-    deadline: string;
-    link: string;
-}
-
-export const Dashboard: React.FC = () => {
-    const [matches, setMatches] = useState<Match[]>([]);
+const Dashboard: React.FC = () => {
+    const [matches, setMatches] = useState<HackathonMatch[]>([]);
     const [loading, setLoading] = useState(false);
-    const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+    const [error, setError] = useState('');
+    const [selectedMatch, setSelectedMatch] = useState<HackathonMatch | null>(null);
     const [stats, setStats] = useState({
         totalMatches: 0,
         avgWinProbability: 0,
-        bestMatch: null as Match | null,
+        bestMatch: null as HackathonMatch | null,
     });
 
     useEffect(() => {
@@ -32,24 +21,23 @@ export const Dashboard: React.FC = () => {
 
     const fetchMatches = async () => {
         setLoading(true);
+        setError('');
         try {
-            const response = await fetch(`${config.api.baseUrl}/api/matches/hackathons`, {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' },
-            });
-            const data = await response.json();
-            setMatches(data.data || []);
+            const response = await apiClient.getMatches(10);
+            const matchesData = response.data || [];
+            setMatches(matchesData);
 
-            if (data.data && data.data.length > 0) {
+            if (matchesData.length > 0) {
                 setStats({
-                    totalMatches: data.data.length,
+                    totalMatches: matchesData.length,
                     avgWinProbability:
-                        data.data.reduce((acc: number, m: Match) => acc + m.win_probability, 0) / data.data.length,
-                    bestMatch: data.data[0],
+                        matchesData.reduce((acc: number, m: HackathonMatch) => acc + m.win_probability, 0) / matchesData.length,
+                    bestMatch: matchesData[0],
                 });
             }
-        } catch (error) {
-            console.error('Failed to fetch matches:', error);
+        } catch (err) {
+            console.error('Failed to fetch matches:', err);
+            setError(err instanceof Error ? err.message : 'Failed to fetch matches');
         } finally {
             setLoading(false);
         }
@@ -118,7 +106,7 @@ export const Dashboard: React.FC = () => {
                             <div>
                                 <p className="text-gray-400 text-sm mb-2">Best Prize Pool</p>
                                 <p className="text-4xl font-bold">
-                                    {stats.bestMatch?.prize ? `$${(stats.bestMatch.prize / 1000).toFixed(1)}K` : 'N/A'}
+                                    {stats.bestMatch?.prize_pool ? `$${(stats.bestMatch.prize_pool / 1000).toFixed(1)}K` : 'N/A'}
                                 </p>
                             </div>
                             <motion.div whileHover={{ scale: 1.1 }} className="p-3 bg-yellow-500/10 rounded-lg">
@@ -127,6 +115,13 @@ export const Dashboard: React.FC = () => {
                         </div>
                     </Card>
                 </motion.div>
+
+                {/* Error Message */}
+                {error && (
+                    <motion.div variants={fadeInUp} className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400">
+                        {error}
+                    </motion.div>
+                )}
 
                 {/* Matches Grid */}
                 <motion.div variants={fadeInUp} className="mb-12">
@@ -139,9 +134,16 @@ export const Dashboard: React.FC = () => {
                             </div>
                             <p className="text-gray-400 mt-4">Finding your perfect matches...</p>
                         </div>
+                    ) : matches.length === 0 ? (
+                        <div className="text-center py-12">
+                            <p className="text-gray-400">No matches found. Try updating your profile with more skills.</p>
+                            <Button className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg">
+                                Update Profile
+                            </Button>
+                        </div>
                     ) : (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {matches.map((match, idx) => (
+                            {matches.map((match) => (
                                 <motion.div
                                     key={match.id}
                                     variants={fadeInUp}
@@ -172,18 +174,29 @@ export const Dashboard: React.FC = () => {
                                         </div>
                                         <div className="bg-white/5 rounded-lg p-3">
                                             <p className="text-gray-400 text-xs mb-1">Prize</p>
-                                            <p className="text-lg font-bold text-yellow-400">${(match.prize || 0) / 1000}K</p>
+                                            <p className="text-lg font-bold text-yellow-400">${(match.prize_pool || 0) / 1000}K</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Matched Skills */}
+                                    <div className="mb-4">
+                                        <p className="text-gray-400 text-xs mb-2">Matched Skills</p>
+                                        <div className="flex flex-wrap gap-1">
+                                            {match.matched_skills.slice(0, 3).map((skill) => (
+                                                <span key={skill} className="px-2 py-1 text-xs bg-green-500/20 text-green-300 rounded">
+                                                    {skill}
+                                                </span>
+                                            ))}
+                                            {match.matched_skills.length > 3 && (
+                                                <span className="px-2 py-1 text-xs text-gray-400">+{match.matched_skills.length - 3}</span>
+                                            )}
                                         </div>
                                     </div>
 
                                     {/* Deadline */}
                                     <div className="flex items-center gap-2 text-gray-400 text-sm mb-4">
                                         <Clock className="w-4 h-4" />
-                                        <span>Deadline: {new Date(match.deadline).toLocaleDateString()}</span>
-                                    </div>
-
-                                    {/* Actions */}
-                                    <div className="flex gap-2">
+                                        <span>Deadline: {new Date(match.end_date).toLocaleDateString()}</span>
                                         <Button className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm">
                                             View Details
                                         </Button>
