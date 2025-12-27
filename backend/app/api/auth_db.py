@@ -1,5 +1,5 @@
-"""Authentication endpoints with SQLite persistence."""
-from fastapi import APIRouter, HTTPException, Depends, status
+"""Authentication endpoints with SQLite persistence and security hardening."""
+from fastapi import APIRouter, HTTPException, Depends, status, Header, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta
@@ -9,9 +9,11 @@ import bcrypt
 import uuid
 import secrets
 import json
+import logging
 
 from app.core.config import settings
 from app.core.db import get_db
+from app.core.security import get_limiter, TokenValidator, log_security_event
 from app.models.database import User, RefreshToken
 from app.models.schemas import (
     RegisterRequest,
@@ -22,6 +24,10 @@ from app.models.schemas import (
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
+
+# Get rate limiter
+limiter = get_limiter()
 
 
 def hash_password(password: str) -> str:
@@ -121,14 +127,20 @@ def verify_token(token: str) -> dict:
 
 
 @router.post("/register", response_model=TokenResponse)
-async def register(req: RegisterRequest, db: Session = Depends(get_db)):
-    """Register a new user."""
+@limiter.limiter.limit(settings.RATE_LIMIT_AUTH)  # 10/minute for auth
+async def register(req: RegisterRequest, request: Request, db: Session = Depends(get_db)):
+    """Register a new user with rate limiting protection against brute force."""
     # Check if user already exists
     existing = db.query(User).filter(
         (User.email == req.email) | (User.username == req.username)
     ).first()
     
     if existing:
+        log_security_event(
+            "registration_failed",
+            {"email": req.email, "reason": "already_exists"},
+            severity="WARNING"
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email or username already registered"
@@ -149,8 +161,18 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
         db.add(user)
         db.commit()
         db.refresh(user)
+        
+        log_security_event(
+            "user_registered",
+            {"user_id": user_id, "email": req.email}
+        )
     except IntegrityError:
         db.rollback()
+        log_security_event(
+            "registration_failed",
+            {"email": req.email, "reason": "database_error"},
+            severity="WARNING"
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User creation failed - email or username may be taken"
@@ -178,17 +200,29 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest, db: Session = Depends(get_db)):
-    """Login a user."""
+@limiter.limiter.limit(settings.RATE_LIMIT_AUTH)  # 10/minute for auth
+async def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    """Login a user with rate limiting protection against brute force attacks."""
     user = db.query(User).filter(User.email == req.email).first()
     
     if not user or not verify_password(req.password, user.password_hash):
+        # Log failed attempt without exposing which field failed
+        log_security_event(
+            "login_failed",
+            {"email": req.email, "ip": request.client.host, "reason": "invalid_credentials"},
+            severity="WARNING"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
         )
     
     if not user.is_active:
+        log_security_event(
+            "login_failed",
+            {"user_id": user.id, "reason": "account_disabled"},
+            severity="WARNING"
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is disabled"
@@ -206,6 +240,11 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
     )
     db.add(db_refresh)
     db.commit()
+    
+    log_security_event(
+        "user_login",
+        {"user_id": user.id, "email": req.email}
+    )
     
     return TokenResponse(
         access_token=access_token,
@@ -297,17 +336,25 @@ async def google_oauth(req: OAuthRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user(
-    token: str = None,
+    token: Optional[str] = None,
+    request: Request = None,
     db: Session = Depends(get_db)
 ):
-    """Get current user profile from JWT token."""
+    """Get current user profile with authentication enforcement."""
     if not token:
+        log_security_event(
+            "auth_failure",
+            {"endpoint": "/api/auth/me", "reason": "no_token"},
+            severity="WARNING"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No token provided"
+            detail="No token provided",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     
-    payload = verify_token(token)
+    # Validate token using secure token validator
+    payload = TokenValidator.validate_access_token(token)
     user_id = payload.get("sub")
     
     user = db.query(User).filter(User.id == user_id).first()
@@ -320,24 +367,48 @@ async def get_current_user(
     return build_user_response(user)
 
 
+
 @router.post("/refresh")
-async def refresh_access_token(refresh_token: str, db: Session = Depends(get_db)):
-    """Refresh access token using refresh token."""
-    payload = verify_token(refresh_token)
-    if payload.get("type") != "refresh":
+@limiter.limiter.limit(settings.RATE_LIMIT_AUTH)  # 10/minute for auth
+async def refresh_access_token(
+    refresh_token: str,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Refresh access token using refresh token with rate limiting."""
+    try:
+        # Use secure token validator
+        payload = TokenValidator.validate_refresh_token(refresh_token)
+        
+        user_id = payload.get("sub")
+        user = db.query(User).filter(User.id == user_id).first()
+        
+        if not user:
+            log_security_event(
+                "refresh_failed",
+                {"reason": "user_not_found"},
+                severity="WARNING"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        new_access_token = create_access_token(user_id)
+        
+        log_security_event(
+            "token_refreshed",
+            {"user_id": user_id}
+        )
+        
+        return {"access_token": new_access_token, "token_type": "bearer"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Token refresh error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token"
+            detail="Token refresh failed"
         )
-    
-    user_id = payload.get("sub")
-    user = db.query(User).filter(User.id == user_id).first()
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    new_access_token = create_access_token(user_id)
-    return {"access_token": new_access_token, "token_type": "bearer"}
+

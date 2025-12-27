@@ -1,14 +1,21 @@
-"""FastAPI application entry point"""
+"""FastAPI application entry point with production-grade security."""
 import logging
 from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from contextlib import asynccontextmanager
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
 from app.core.db import init_db
-from app.api import auth_db, generate, matching, password_reset
+from app.core.security import (
+    get_limiter,
+    CORSConfig,
+    add_security_headers,
+)
+from app.api import auth_db, generate, matching, password_reset, router, websocket
 
 # Configure logging
 logging.basicConfig(
@@ -44,34 +51,55 @@ app = FastAPI(
     title="HackQuest AI",
     description="AI-Powered Hackathon Matching & Code Generation Platform",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url="/docs" if settings.DEBUG else None,  # Hide docs in production
+    redoc_url="/redoc" if settings.DEBUG else None,
+    openapi_url="/openapi.json" if settings.DEBUG else None,
 )
 
-# Middleware
+# ============================================================================
+# MIDDLEWARE: ORDER MATTERS
+# ============================================================================
+
+# 1. Security headers middleware (innermost - runs last on response)
+app.middleware("http")(add_security_headers)
+
+# 2. GZIP compression
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# 3. Rate limiting
+limiter = get_limiter()
+app.state.limiter = limiter.limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# 4. CORS (should be near outermost for security)
+cors_config = CORSConfig.get_cors_config()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    **cors_config
 )
+
+logger.info(f"Security configuration loaded for environment: {settings.environment}")
+logger.info(f"Rate limiting: {settings.RATE_LIMIT_DEFAULT}")
+logger.info(f"CORS origins: {cors_config['allow_origins']}")
 
 # Include routers
 app.include_router(auth_db.router)
 app.include_router(generate.router)
 app.include_router(matching.router)
 app.include_router(password_reset.router)
+app.include_router(router.router)  # Agent router
+app.include_router(websocket.router)  # WebSocket router
 
 
 @app.get("/")
-async def health_check():
-    """Health check endpoint"""
+async def root():
+    """Root endpoint"""
     return {
-        "status": "healthy",
-        "service": "HackQuest AI Backend",
+        "name": "HackQuest AI API",
         "version": "1.0.0",
-        "environment": settings.environment
+        "status": "operational",
+        "docs": "/docs"
     }
 
 
