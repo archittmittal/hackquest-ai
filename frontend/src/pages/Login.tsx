@@ -29,7 +29,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         try {
             const result = await apiClient.login(email, password);
 
-            localStorage.setItem('user', JSON.stringify(result.user));
+            localStorage.setItem('user', JSON.stringify({ loggedIn: true }));
 
             if (onLoginSuccess) {
                 onLoginSuccess({
