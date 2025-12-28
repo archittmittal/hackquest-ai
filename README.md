@@ -73,11 +73,34 @@ Includes:
 
 ---
 
-## ☁️ Cloud Deployment
+## ☁️ Cloud Deployment & CI/CD
 
-### Azure (Student Subscription Restricted)
+### Local Development (Recommended)
 
-Your subscription has policy restrictions on resource creation. **Alternatives:**
+**GitHub Actions runs automated tests locally:**
+- Frontend: Linted & built (Node.js 20)
+- Backend: Validated & checked (Python 3.11)
+- Security: CodeQL analysis on every push
+- Artifacts: Download builds from Actions tab
+
+To run locally:
+```powershell
+# Terminal 1: Backend
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+
+# Terminal 2: Frontend
+cd frontend
+npm install
+npm run dev
+```
+
+**No cloud deployment configured** — development/testing only.
+
+### Cloud Deployment (Future - Azure Alternatives)
+
+Your subscription has policy restrictions. **Alternatives:**
 
 1. **Railway.app** (Recommended)
    - Free $5/month credit
@@ -89,7 +112,7 @@ Your subscription has policy restrictions on resource creation. **Alternatives:*
    - PostgreSQL free tier
    - [render.com](https://render.com)
 
-3. **Local Docker** (For testing)
+3. **Docker Compose** (Local testing)
    ```powershell
    docker-compose -f docker/docker-compose.yml up
    ```
